@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ScrubFew — strip hidden metadata, in your browser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{--bg:#0a0c10;--panel:#11151c;--panel-2:#161b24;--line:#222a36;--line-soft:#1a212b;--txt:#dfe6f0;--txt-dim:#8893a4;--txt-faint:#5b6573;--accent:#37e0b0;--warn:#ff9a3c;--danger:#ff3b53;--grid:rgba(120,140,170,0.045);--op:#a78bfa;}
+  html[data-theme="light"]{--bg:#f5f7fa;--panel:#ffffff;--panel-2:#eef1f6;--line:#dde3ec;--line-soft:#e8edf3;--txt:#141a24;--txt-dim:#54607a;--txt-faint:#8b94a6;--accent:#0fae82;--warn:#d9731a;--danger:#e11d48;--grid:rgba(30,50,90,0.05);--op:#6d4bff;}
+  *{box-sizing:border-box;} html,body{margin:0;padding:0;scroll-behavior:smooth;overflow-x:hidden;}
+  body{background:var(--bg);color:var(--txt);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;line-height:1.5;min-height:100vh;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:42px 42px;}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.035;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes fu{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  @keyframes bob{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,8px)}}
+
+  .topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:12px 22px;background:rgba(10,12,16,.72);backdrop-filter:blur(9px);border-bottom:1px solid var(--line-soft);}
+  html[data-theme="light"] .topbar{background:rgba(245,247,250,.8);}
+  .tb-brand{font-family:'Space Mono',monospace;font-weight:700;letter-spacing:.02em;font-size:16px;display:flex;align-items:center;gap:9px;}
+  .tb-brand .ac,.modal h3 .ac,.handoff .ac{color:var(--accent);}
+  .tb-brand .dot{width:8px;height:8px;border-radius:2px;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:pulse 2.6s infinite;}
+  .tb-right{display:flex;gap:10px;align-items:center;}
+  button,label.btn{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.06em;background:var(--panel-2);color:var(--txt);border:1px solid var(--line);padding:9px 14px;border-radius:7px;cursor:pointer;transition:.15s;text-transform:uppercase;}
+  button:hover,label.btn:hover{border-color:var(--accent);color:var(--accent);}
+  button.primary{background:var(--accent);color:#04140f;border-color:var(--accent);font-weight:600;}
+  button.primary:hover{filter:brightness(1.1);color:#04140f;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  button:disabled:hover{border-color:var(--line);color:var(--txt);}
+  input[type=file]{display:none;}
+  .langsw,.themesw{display:inline-flex;border:1px solid var(--line);border-radius:20px;overflow:hidden;font-family:'IBM Plex Mono',monospace;font-size:11px;}
+  .langsw span,.themesw span{padding:8px 12px;cursor:pointer;color:var(--txt-faint);user-select:none;letter-spacing:.06em;}
+  .langsw span.on,.themesw span.on{background:var(--accent);color:#04140f;font-weight:600;}
+  .langsw span:hover:not(.on),.themesw span:hover:not(.on){color:var(--txt);}
+
+  .hero{position:relative;min-height:90vh;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden;padding:60px 22px;}
+  .dotfield{position:absolute;inset:0;z-index:0;}
+  .dotfield i{position:absolute;width:4px;height:4px;border-radius:50%;background:var(--txt-faint);opacity:.22;}
+  .dotfield i.ac{background:var(--accent);opacity:1;box-shadow:0 0 13px var(--accent);width:6px;height:6px;animation:pulse 2.6s infinite;}
+  .hero::after{content:"";position:absolute;inset:0;z-index:1;background:radial-gradient(ellipse 60% 50% at 50% 45%,transparent 30%,var(--bg) 90%);}
+  .hero-inner{position:relative;z-index:2;max-width:920px;}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent);margin-bottom:22px;opacity:0;animation:fu .6s .1s forwards;}
+  .hero h1{font-family:'Space Mono',monospace;font-weight:700;font-size:clamp(34px,6.6vw,76px);line-height:1.06;margin:0;letter-spacing:-.01em;}
+  .hero h1 .b1{display:block;opacity:0;animation:fu .6s .22s forwards;}
+  .hero h1 .b2{display:block;color:var(--accent);opacity:0;animation:fu .6s .36s forwards;}
+  .hero .sub{max-width:660px;margin:26px auto 0;font-size:clamp(15px,1.8vw,19px);color:var(--txt-dim);line-height:1.6;opacity:0;animation:fu .6s .52s forwards;}
+  .hero .cta{margin-top:34px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;opacity:0;animation:fu .6s .68s forwards;}
+  .hero .cta button{padding:14px 22px;font-size:13px;border-radius:9px;}
+  .scrollcue{position:absolute;bottom:22px;left:50%;color:var(--txt-faint);font-size:20px;z-index:2;animation:bob 1.8s infinite;}
+
+  .story{max-width:1000px;margin:0 auto;padding:10px 22px;}
+  .block{padding:52px 0;border-top:1px solid var(--line-soft);opacity:0;transform:translateY(22px);transition:.7s ease;}
+  .block.in{opacity:1;transform:none;}
+  .block .eyebrow{animation:none;opacity:1;margin-bottom:14px;}
+  .block h2{font-family:'Space Mono',monospace;font-weight:700;font-size:clamp(26px,4vw,42px);margin:0 0 14px;line-height:1.1;}
+  .lead{font-size:clamp(15px,1.7vw,18px);color:var(--txt-dim);line-height:1.65;max-width:720px;margin:0;}
+  .lead b{color:var(--txt);}
+  .signals{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:30px;}
+  .sigcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;border-top:3px solid var(--accent);}
+  .sigcard:nth-child(1){border-top-color:var(--danger);}.sigcard:nth-child(2){border-top-color:var(--warn);}.sigcard:nth-child(3){border-top-color:var(--op);}
+  .sigcard h3{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.05em;margin:0 0 9px;}
+  .sigcard p{margin:0;font-size:13px;color:var(--txt-dim);line-height:1.55;}
+  .mission,.privacy{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:30px 28px;}
+  .privacy{border-left:3px solid var(--accent);}
+  @media(max-width:760px){.signals{grid-template-columns:1fr;}}
+
+  .app{max-width:900px;margin:20px auto 0;padding:0 22px 60px;scroll-margin-top:62px;}
+  .app-head{padding:44px 0 4px;border-top:1px solid var(--line-soft);}
+  .app-head h2{font-family:'Space Mono',monospace;font-size:clamp(22px,3vw,32px);margin:6px 0 0;}
+  .datanote{margin-top:16px;background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:9px;padding:11px 14px;font-size:12.5px;color:var(--txt-dim);line-height:1.55;}
+  .drop{display:block;width:100%;margin-top:22px;border:1.5px dashed var(--line);border-radius:14px;padding:40px 22px;text-align:center;transition:.15s;background:var(--panel);}
+  .drop.over{border-color:var(--accent);background:var(--panel-2);}
+  .drop .big{font-family:'Space Mono',monospace;font-size:17px;margin:0 0 6px;}
+  .drop .sm{font-size:12.5px;color:var(--txt-faint);font-family:'IBM Plex Mono',monospace;margin-top:10px;}
+  .filebadge{display:inline-flex;align-items:center;gap:10px;margin-top:14px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+  .filebadge .x{cursor:pointer;color:var(--txt-faint);}.filebadge .x:hover{color:var(--danger);}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin-top:20px;}
+  .panel h3{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--txt-dim);margin:0 0 14px;font-weight:500;}
+  .types{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+  @media(max-width:620px){.types{grid-template-columns:1fr;}}
+  .typechip{display:flex;align-items:center;gap:11px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:11px 13px;cursor:pointer;transition:.12s;}
+  .typechip:hover{border-color:var(--accent);}
+  .typechip.off{opacity:.45;}
+  .typechip .cb{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--txt-faint);flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:11px;color:#04140f;}
+  .typechip:not(.off) .cb{background:var(--accent);border-color:var(--accent);}
+  .typechip .nm{font-size:13px;flex:1;}
+  .typechip .ct{font-family:'Space Mono',monospace;font-weight:700;font-size:15px;color:var(--accent);}
+  .typechip.zero{opacity:.4;}.typechip.zero .ct{color:var(--txt-faint);}
+  .modes{display:flex;gap:10px;flex-wrap:wrap;}
+  .mode{flex:1;min-width:180px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:13px 14px;cursor:pointer;transition:.12s;}
+  .mode:hover{border-color:var(--accent);}
+  .mode.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);}
+  .mode .mt{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:500;margin-bottom:5px;}
+  .mode.on .mt{color:var(--accent);}
+  .mode .md{font-size:11.5px;color:var(--txt-dim);line-height:1.45;}
+  .actionbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:20px;}
+  .status{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--txt-dim);}
+  .hint{margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--txt-faint);line-height:1.7;}
+  .hint b{color:var(--txt-dim);} .hint code{background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--accent);}
+  .viscontrols{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px;}
+  .viscontrols .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .viscontrols .seg button{border:none;border-radius:0;border-right:1px solid var(--line);}
+  .viscontrols .seg button:last-child{border-right:none;}
+  .viscontrols .seg button.on{background:var(--accent);color:#04140f;}
+  .viscontrols button.on{border-color:var(--accent);color:#04140f;background:var(--accent);}
+  .canvaswrap{margin-top:6px;border:1px solid var(--line);border-radius:10px;overflow:auto;background:var(--panel-2);max-height:68vh;text-align:center;}
+  #vcanvas{max-width:100%;height:auto;display:block;margin:0 auto;}
+  #vcanvas.draw{cursor:crosshair;}
+  .visnote{margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--txt-faint);line-height:1.6;}
+  .hidden{display:none !important;}
+
+  .handoff{margin-top:34px;background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;padding:22px 24px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;}
+  .handoff .ho-txt{flex:1 1 320px;min-width:240px;}
+  .handoff .eyebrow{animation:none;opacity:1;margin-bottom:11px;}
+  .handoff h3{font-size:18px;font-weight:600;margin:0 0 8px;line-height:1.32;color:var(--txt);}
+  .handoff p{margin:0;font-size:13px;color:var(--txt-dim);line-height:1.55;}
+  .handoff a.cta-fx{flex:0 0 auto;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#04140f;border:1px solid var(--accent);padding:13px 20px;border-radius:9px;text-decoration:none;font-weight:600;white-space:nowrap;transition:.15s;}
+  .handoff a.cta-fx:hover{filter:brightness(1.1);}
+
+  footer{max-width:900px;margin:0 auto;padding:24px 22px 50px;border-top:1px solid var(--line-soft);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--txt-faint);line-height:1.7;} footer a{color:var(--accent);text-decoration:none;}
+
+  .modal-bg{position:fixed;inset:0;z-index:90;background:rgba(4,7,11,.7);backdrop-filter:blur(4px);display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:50px 18px;}
+  .modal-bg.on{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:680px;width:100%;padding:34px 32px;position:relative;}
+  .modal h3{font-family:'Space Mono',monospace;font-size:22px;margin:0 0 6px;}
+  .modal h4{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:24px 0 8px;}
+  .modal p,.modal li{font-size:13.5px;color:var(--txt-dim);line-height:1.6;}
+  .modal code{background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--accent);font-size:12px;}
+  .modal .close{position:absolute;top:18px;right:18px;background:none;border:none;color:var(--txt-faint);font-size:22px;padding:4px 8px;}
+  .modal .close:hover{color:var(--danger);border:none;}
+  .famly{max-width:900px;margin:0 auto;padding:8px 22px 4px;}
+  .famly-h{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--txt-faint);margin:0 0 11px;}
+  .famly-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;}
+  @media(max-width:620px){.famly-grid{grid-template-columns:1fr;}}
+  .famcard{display:flex;flex-direction:column;gap:3px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px 28px 12px 14px;text-decoration:none;transition:.15s;position:relative;}
+  .famcard::after{content:"→";position:absolute;top:12px;right:13px;color:var(--txt-faint);font-size:12px;transition:.15s;}
+  .famcard:hover{border-color:var(--accent);transform:translateY(-2px);}
+  .famcard:hover::after{color:var(--accent);transform:translateX(2px);}
+  .famname{font-family:'Space Mono',monospace;font-weight:700;font-size:14px;color:var(--txt);}
+  .famname .ac{color:var(--accent);}
+  .famtag{font-size:11.5px;color:var(--txt-dim);line-height:1.4;}
+  .metarow{display:flex;justify-content:space-between;gap:14px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);margin-bottom:7px;font-size:13px;}
+  .metarow .mk{color:var(--txt-dim);white-space:nowrap;}
+  .metarow .mv{color:var(--txt);text-align:right;word-break:break-word;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+  .metarow.warn{border-left:3px solid #ff9a3c;}
+  .metanone{color:var(--txt-dim);font-size:13px;}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="tb-brand"><span class="dot"></span><span>Scrub<span class="ac">Few</span></span></div>
+    <div class="tb-right">
+      <button id="btnHow"></button>
+      <div class="themesw"><span id="thDark" class="on">☾</span><span id="thLight">☀</span></div>
+      <div class="langsw"><span id="lgEn" class="on">EN</span><span id="lgIt">IT</span></div>
+    </div>
+  </div>
+
+  <section class="hero">
+    <div class="dotfield" id="dotfield"></div>
+    <div class="hero-inner">
+      <div class="eyebrow" id="heroEyebrow"></div>
+      <h1><span class="b1" id="heroH1a"></span><span class="b2" id="heroH1b"></span></h1>
+      <p class="sub" id="heroSub"></p>
+      <div class="cta">
+        <button class="primary" id="heroCta1"></button>
+        <button id="heroCta2"></button>
+      </div>
+    </div>
+    <div class="scrollcue">↓</div>
+  </section>
+
+  <div class="story">
+    <div class="block" id="blk1">
+      <div class="eyebrow" id="b1eye"></div>
+      <h2 id="b1h"></h2>
+      <p class="lead" id="b1p"></p>
+      <div class="signals">
+        <div class="sigcard"><h3 id="s1h"></h3><p id="s1p"></p></div>
+        <div class="sigcard"><h3 id="s2h"></h3><p id="s2p"></p></div>
+        <div class="sigcard"><h3 id="s3h"></h3><p id="s3p"></p></div>
+      </div>
+    </div>
+    <div class="block" id="blk2">
+      <div class="eyebrow" id="b2eye"></div>
+      <div class="mission"><h2 id="b2h"></h2><p class="lead" id="b2p"></p></div>
+    </div>
+    <div class="block" id="blk3">
+      <div class="eyebrow" id="b3eye"></div>
+      <div class="privacy"><h2 id="b3h"></h2><p class="lead" id="b3p"></p></div>
+    </div>
+  </div>
+
+  <section class="app" id="app">
+    <div class="app-head">
+      <div class="eyebrow" id="appEye"></div>
+      <h2 id="appH"></h2>
+      <div class="datanote" id="dataNote"></div>
+    </div>
+
+    <label class="drop" id="drop" for="fileIn">
+      <p class="big" id="dropBig"></p>
+      <p class="lead" id="dropSub" style="margin:0 auto;max-width:460px;"></p>
+      <p class="sm" id="dropFmt"></p>
+    </label>
+    <input type="file" id="fileIn" accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf,.docx,.xlsx,.pptx" />
+    <div id="fileWrap"></div>
+
+    <div class="panel hidden" id="reportPanel">
+      <h3 id="reportH"></h3>
+      <div id="metaList"></div>
+      <div class="actionbar">
+        <button class="primary" id="btnGo" disabled></button>
+        <span class="status" id="status"></span>
+      </div>
+    </div>
+
+    <p class="hint" id="hint"></p>
+
+    <div class="handoff">
+      <div class="ho-txt">
+        <div class="eyebrow" id="hoEyebrow"></div>
+        <h3 id="hoH"></h3>
+        <p id="hoP"></p>
+      </div>
+      <a class="cta-fx" id="hoCta" href="https://silvestroparisi.github.io/AskFew/" target="_blank" rel="noopener"></a>
+    </div>
+  </section>
+
+  <div class="famly">
+    <div class="famly-h" id="famlyH"></div>
+    <div class="famly-grid">
+      <a class="famcard" href="https://silvestroparisi.github.io/FirstFew/" target="_blank" rel="noopener"><span class="famname">First<span class="ac">Few</span></span><span class="famtag" id="famFirst"></span></a>
+      <a class="famcard" href="https://silvestroparisi.github.io/FixFew/" target="_blank" rel="noopener"><span class="famname">Fix<span class="ac">Few</span></span><span class="famtag" id="famFix"></span></a>
+      <a class="famcard" href="https://silvestroparisi.github.io/MaskFew/" target="_blank" rel="noopener"><span class="famname">Mask<span class="ac">Few</span></span><span class="famtag" id="famMask"></span></a>
+      <a class="famcard" href="https://silvestroparisi.github.io/AskFew/" target="_blank" rel="noopener"><span class="famname">Ask<span class="ac">Few</span></span><span class="famtag" id="famAsk"></span></a>
+    </div>
+  </div>
+
+  <footer id="footer"></footer>
+
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <button class="close" id="mClose">×</button>
+      <h3 id="m_h1"></h3>
+      <p id="m_p1"></p>
+      <h4 id="m_h2"></h4>
+      <p id="m_p2"></p>
+      <h4 id="m_h3"></h4>
+      <p id="m_p3"></p>
+      <h4 id="m_h4"></h4>
+      <p id="m_p4"></p>
+    </div>
+  </div>
+
+<script>
+"use strict";
+const byId=id=>document.getElementById(id);
+/* ---------- i18n ---------- */
+const I18N={
+ en:{
+  how:`ⓘ How it works`,
+  heroEyebrow:`PRIVACY-FIRST · RUNS IN YOUR BROWSER`,
+  heroH1a:`Files remember more than you think.`,
+  heroH1b:`Scrub the Few traces they keep.`,
+  heroSub:`Photos carry GPS and camera serials; Office files carry your name, company and edit history; PDFs carry the software that made them. ScrubFew strips that hidden metadata — entirely in your browser, nothing uploaded — and gives the cleaned file back.`,
+  heroCta1:`Clean a file`,
+  heroCta2:`How it works`,
+  b1eye:`THE TRAP`,
+  b1h:`You share the file. You also share what's inside it.`,
+  b1p:`Every photo, document and PDF carries metadata you never see: who made it, on which computer, with which software, when — and for photos, often the exact <b>GPS coordinates</b> where the shot was taken. Post it, email it, upload it, and all of that travels with it.`,
+  s1h:`Photos`,
+  s1p:`EXIF and GPS: camera model and serial number, timestamps, and the location where the picture was taken.`,
+  s2h:`Office files`,
+  s2p:`Author and last-editor names, your company, template paths, revision number — and any leftover comments or tracked changes.`,
+  s3h:`PDFs`,
+  s3p:`Title, author, creation and modification dates, and the exact software and version used to produce the file.`,
+  b2eye:`THE IDEA`,
+  b2h:`Strip it before it leaves — locally.`,
+  b2p:`A sanitizer only makes sense <b>inside the page itself</b>: you can't upload a file to a website to remove its hidden data without first handing that data over. ScrubFew reads and rewrites the file in your browser and gives you back the same format, cleaned.`,
+  b3eye:`NO SERVER · 100% LOCAL`,
+  b3h:`There's no backend. Nothing to trust — just check.`,
+  b3p:`The whole tool is a single static page: no account, no upload, no server waiting to receive your file. Reading it, finding the metadata, writing the clean copy — every step runs in your browser, on your machine. It's open source, so you can read every line, and you can even save the page and run it offline. Open <b>DevTools → Network</b> and watch: the only things ever requested are the page itself and, for PDF/Office, the open-source libraries it uses — your file never leaves.`,
+  appEye:`THE TOOL`,
+  appH:`Scrub a file`,
+  dataNote:`Images, PDF and Office files (docx / xlsx / pptx). Everything runs locally — your file is never uploaded.`,
+  dropBig:`Drop a file here`,
+  dropSub:`or click to choose — it never leaves your browser`,
+  dropFmt:`Images · PDF · Word / Excel / PowerPoint`,
+  reportH:`What's hidden in this file`,
+  btnGo:`Scrub & download`,
+  hint:`ScrubFew is best-effort: it removes embedded metadata (EXIF/GPS, document properties, producer info). Comments and tracked changes are flagged so you can remove them in the source app, and a PDF's XMP layer or oddly-embedded objects can still hold traces — always review before sharing.`,
+  hoEyebrow:`DON'T SHARE IT AT ALL`,
+  ho_h:`Cleaning it to feed an AI? <span class="ac">Skip the sharing entirely.</span>`,
+  ho_p:`If you're scrubbing a file just to paste it into a cloud AI, there's a more private route — ask a local one. AskFew runs entirely in your browser: drop the file in and nothing leaves your device at all.`,
+  hoCta:`Open AskFew →`,
+  famlyH:`The rest of the Few toolkit`,
+  famFirst:`Prioritize the few that matter.`,
+  famFix:`Fix the few — verified.`,
+  famMask:`Mask the few that expose you.`,
+  famAsk:`A private AI, in your browser.`,
+  footer:`Built by <b style="color:var(--txt)">Silvestro Parisi</b> · open source · runs entirely in your browser.<div style="margin-top:9px">More from me on <a href="https://github.com/silvestroparisi" target="_blank" rel="noopener">github.com/silvestroparisi</a></div>`,
+  m_h1:`How ScrubFew works`,
+  m_p1:`ScrubFew opens the file in your browser, finds the metadata baked into it, shows you what's there, and writes out a cleaned copy. No upload, no server.`,
+  m_h2:`Images`,
+  m_p2:`The image is re-encoded on a canvas, which drops <b>all</b> embedded metadata — EXIF, GPS, camera info, thumbnails, comments. Output is a fresh PNG / JPEG / WebP. (Animated GIFs are flattened to a single frame.)`,
+  m_h3:`PDF & Office`,
+  m_p3:`For PDF, the document information (title, author, creator, producer, dates) is cleared. For Word / Excel / PowerPoint, the document properties (author, last-editor, company, dates, revision) are blanked. Comments and tracked changes are <b>flagged</b> so you can remove them in the original app.`,
+  m_h4:`What it can't promise`,
+  m_p4:`Best-effort, not a guarantee: a PDF's XMP stream, deeply embedded objects, or content split oddly inside the Office XML may slip through. <b>Always review the file before sharing it.</b>`,
+  status_scanning:`Reading…`,
+  status_working:`Cleaning…`,
+  status_done:`Done — cleaned file downloaded.`,
+  status_unsupported:`Unsupported file type.`,
+  status_found:`{n} metadata item(s) found.`,
+  status_clean:`No embedded metadata found — you can still save a re-encoded clean copy.`,
+  meta_none:`No embedded metadata detected.`,
+  meta_present:`present`
+ },
+ it:{
+  how:`ⓘ Come funziona`,
+  heroEyebrow:`PRIVACY-FIRST · GIRA NEL TUO BROWSER`,
+  heroH1a:`I file ricordano più di quanto credi.`,
+  heroH1b:`Cancella le poche tracce che tengono.`,
+  heroSub:`Le foto portano GPS e seriali della fotocamera; i file Office portano il tuo nome, l'azienda e la cronologia delle modifiche; i PDF portano il software che li ha creati. ScrubFew rimuove questi metadati nascosti — interamente nel tuo browser, niente upload — e ti ridà il file pulito.`,
+  heroCta1:`Pulisci un file`,
+  heroCta2:`Come funziona`,
+  b1eye:`LA TRAPPOLA`,
+  b1h:`Condividi il file. Condividi anche cosa c'è dentro.`,
+  b1p:`Ogni foto, documento e PDF porta metadati che non vedi mai: chi l'ha creato, su quale computer, con quale software, quando — e per le foto, spesso le <b>coordinate GPS</b> esatte di dove è stato scattato. Lo pubblichi, lo invii, lo carichi, e tutto questo viaggia con lui.`,
+  s1h:`Foto`,
+  s1p:`EXIF e GPS: modello e numero di serie della fotocamera, timestamp, e il luogo in cui è stata scattata.`,
+  s2h:`File Office`,
+  s2p:`Nome dell'autore e dell'ultimo che ha modificato, la tua azienda, percorsi dei template, numero di revisione — e commenti o revisioni rimasti.`,
+  s3h:`PDF`,
+  s3p:`Titolo, autore, date di creazione e modifica, e il software esatto e la versione usati per produrlo.`,
+  b2eye:`L'IDEA`,
+  b2h:`Toglili prima che escano — in locale.`,
+  b2p:`Un sanificatore ha senso solo <b>dentro la pagina stessa</b>: non puoi caricare un file su un sito per togliergli i dati nascosti senza prima consegnarglieli. ScrubFew legge e riscrive il file nel tuo browser e ti ridà lo stesso formato, pulito.`,
+  b3eye:`NESSUN SERVER · 100% LOCALE`,
+  b3h:`Non c'è backend. Niente da credere — basta controllare.`,
+  b3p:`L'intero strumento è una singola pagina statica: niente account, niente upload, nessun server in attesa di ricevere il tuo file. Leggerlo, trovare i metadati, scrivere la copia pulita — ogni passo avviene nel tuo browser, sulla tua macchina. È open source, quindi puoi leggere ogni riga, e puoi persino salvare la pagina e usarla offline. Apri i <b>DevTools → Network</b> e guarda: le uniche cose mai richieste sono la pagina stessa e, per PDF/Office, le librerie open source che usa — il tuo file non esce mai.`,
+  appEye:`LO STRUMENTO`,
+  appH:`Pulisci un file`,
+  dataNote:`Immagini, PDF e file Office (docx / xlsx / pptx). Tutto gira in locale — il tuo file non viene mai caricato.`,
+  dropBig:`Trascina qui un file`,
+  dropSub:`o clicca per sceglierlo — non lascia mai il tuo browser`,
+  dropFmt:`Immagini · PDF · Word / Excel / PowerPoint`,
+  reportH:`Cosa è nascosto in questo file`,
+  btnGo:`Pulisci e scarica`,
+  hint:`ScrubFew è best-effort: rimuove i metadati incorporati (EXIF/GPS, proprietà del documento, info sul producer). Commenti e revisioni vengono segnalati così li togli nell'app d'origine, e il livello XMP di un PDF o oggetti incorporati in modo anomalo possono comunque trattenere tracce — controlla sempre prima di condividere.`,
+  hoEyebrow:`NON CONDIVIDERLO AFFATTO`,
+  ho_h:`Lo pulisci per darlo a un'AI? <span class="ac">Salta del tutto la condivisione.</span>`,
+  ho_p:`Se stai pulendo un file solo per incollarlo in un'AI cloud, c'è una via più privata — chiedi a una locale. AskFew gira interamente nel tuo browser: ci trascini il file e non esce nulla dal dispositivo.`,
+  hoCta:`Apri AskFew →`,
+  famlyH:`Il resto del toolkit Few`,
+  famFirst:`Prioritizza i pochi che contano.`,
+  famFix:`Sistema i pochi — verificati.`,
+  famMask:`Maschera i pochi che ti espongono.`,
+  famAsk:`Un'AI privata, nel browser.`,
+  footer:`Creato da <b style="color:var(--txt)">Silvestro Parisi</b> · open source · gira interamente nel tuo browser.<div style="margin-top:9px">Altro da me su <a href="https://github.com/silvestroparisi" target="_blank" rel="noopener">github.com/silvestroparisi</a></div>`,
+  m_h1:`Come funziona ScrubFew`,
+  m_p1:`ScrubFew apre il file nel tuo browser, trova i metadati incorporati, ti mostra cosa c'è, e produce una copia pulita. Niente upload, niente server.`,
+  m_h2:`Immagini`,
+  m_p2:`L'immagine viene ri-codificata su un canvas, cosa che elimina <b>tutti</b> i metadati incorporati — EXIF, GPS, info fotocamera, miniature, commenti. L'output è un PNG / JPEG / WebP nuovo. (Le GIF animate vengono appiattite a un solo fotogramma.)`,
+  m_h3:`PDF e Office`,
+  m_p3:`Per il PDF, le informazioni del documento (titolo, autore, creator, producer, date) vengono azzerate. Per Word / Excel / PowerPoint, le proprietà del documento (autore, ultimo editor, azienda, date, revisione) vengono svuotate. Commenti e revisioni vengono <b>segnalati</b> così li rimuovi nell'app originale.`,
+  m_h4:`Cosa non può garantire`,
+  m_p4:`Best-effort, non una garanzia: il flusso XMP di un PDF, oggetti incorporati in profondità o contenuto spezzato in modo anomalo nell'XML di Office possono sfuggire. <b>Controlla sempre il file prima di condividerlo.</b>`,
+  status_scanning:`Lettura…`,
+  status_working:`Pulizia…`,
+  status_done:`Fatto — file pulito scaricato.`,
+  status_unsupported:`Tipo di file non supportato.`,
+  status_found:`{n} elemento/i di metadati trovati.`,
+  status_clean:`Nessun metadato incorporato trovato — puoi comunque salvare una copia pulita ri-codificata.`,
+  meta_none:`Nessun metadato incorporato rilevato.`,
+  meta_present:`presente`
+ }
+};
+
+let LANG='en';
+const T=()=>I18N[LANG];
+
+function applyLang(){
+ const t=T();
+ byId('btnHow').textContent=t.how;
+ const direct=['heroEyebrow','heroH1a','heroH1b','heroSub','heroCta1','heroCta2','b1eye','b1h','s1h','s2h','s3h','b2eye','b2h','b3eye','b3h','appEye','appH','dropBig','dropSub','dropFmt','reportH','btnGo','famlyH','famFirst','famFix','famMask','famAsk','hoEyebrow','hoCta','m_h1','m_h2','m_h3','m_h4'];
+ direct.forEach(k=>{ const e=byId(k); if(e) e.textContent=t[k]; });
+ ['b1p','s1p','s2p','s3p','b2p','b3p','dataNote','hint','footer','m_p1','m_p2','m_p3','m_p4'].forEach(id=>{ const e=byId(id); if(e) e.innerHTML=t[id]; });
+ byId('hoH').innerHTML=t.ho_h; byId('hoP').innerHTML=t.ho_p;
+}
+
+/* ---------- lang / theme ---------- */
+function setLang(l){ LANG=l; byId('lgEn').classList.toggle('on',l==='en'); byId('lgIt').classList.toggle('on',l==='it'); document.documentElement.lang=l; applyLang(); }
+function setTheme(th){ document.documentElement.setAttribute('data-theme',th); byId('thDark').classList.toggle('on',th!=='light'); byId('thLight').classList.toggle('on',th==='light'); }
+byId('lgEn').onclick=()=>setLang('en'); byId('lgIt').onclick=()=>setLang('it');
+byId('thDark').onclick=()=>setTheme('dark'); byId('thLight').onclick=()=>setTheme('light');
+
+/* ---------- hero dotfield + reveal ---------- */
+(function(){ const df=byId('dotfield'); if(!df) return; let h='';
+ for(let i=0;i<46;i++){ const ac=Math.random()<0.12; h+=`<i class="${ac?'ac':''}" style="left:${(Math.random()*100).toFixed(1)}%;top:${(Math.random()*100).toFixed(1)}%"></i>`; }
+ df.innerHTML=h; })();
+const io=new IntersectionObserver(es=>es.forEach(e=>{ if(e.isIntersecting) e.target.classList.add('in'); }),{threshold:.15});
+['blk1','blk2','blk3'].forEach(id=>{ const el=byId(id); if(el) io.observe(el); });
+
+/* ---------- modal ---------- */
+function openModal(){ byId('modalBg').classList.add('on'); }
+function closeModal(){ byId('modalBg').classList.remove('on'); }
+byId('btnHow').onclick=openModal; byId('heroCta2').onclick=openModal; byId('mClose').onclick=closeModal;
+byId('modalBg').onclick=e=>{ if(e.target===byId('modalBg')) closeModal(); };
+byId('heroCta1').onclick=()=>byId('app').scrollIntoView({behavior:'smooth'});
+
+/* ---------- helpers ---------- */
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const extOf=n=>{ const m=/\.([a-z0-9]+)$/i.exec(n); return m?m[1].toLowerCase():''; };
+function cleanName(name,newExt){ const i=name.lastIndexOf('.'); const base=i<0?name:name.slice(0,i); return base+'_clean'+(newExt?('.'+newExt):''); }
+function dl(name,blob){ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(u); },1500); }
+function loadScript(src){ return new Promise((res,rej)=>{ if([...document.scripts].some(s=>s.src===src)) return res(); const s=document.createElement('script'); s.src=src; s.onload=()=>res(); s.onerror=()=>rej(new Error('failed to load '+src)); document.head.appendChild(s); }); }
+
+const IMG_EXT=['png','jpg','jpeg','webp','gif','bmp'];
+const OFFICE_EXT=['docx','xlsx','pptx'];
+let CUR=null;
+
+function L(){ return LANG==='it'
+ ? {author:'Autore',lastBy:'Ultima modifica di',company:'Azienda',manager:'Manager',template:'Modello',app:'Applicazione',created:'Creato',modified:'Modificato',title:'Titolo',subject:'Oggetto',descr:'Descrizione',keywords:'Parole chiave',revision:'Revisione',producer:'Producer',creator:'Creatore (software)',comments:'Commenti',track:'Revisioni (track changes)',exif:'Metadati EXIF',gps:'Posizione GPS',xmp:'Metadati XMP',iptc:'IPTC / Photoshop',icc:'Profilo ICC',imgcomment:'Commento immagine',pngtext:'Testo PNG incorporato',pngtime:'Timestamp PNG'}
+ : {author:'Author',lastBy:'Last modified by',company:'Company',manager:'Manager',template:'Template',app:'Application',created:'Created',modified:'Modified',title:'Title',subject:'Subject',descr:'Description',keywords:'Keywords',revision:'Revision',producer:'Producer',creator:'Creator (software)',comments:'Comments',track:'Tracked changes',exif:'EXIF metadata',gps:'GPS location',xmp:'XMP metadata',iptc:'IPTC / Photoshop',icc:'ICC profile',imgcomment:'Image comment',pngtext:'Embedded PNG text',pngtime:'PNG timestamp'}; }
+
+function metaRow(label,value,warn){ return `<div class="metarow${warn?' warn':''}"><span class="mk">${esc(label)}</span><span class="mv">${esc(value)}</span></div>`; }
+function showReport(found){
+ const t=T(); const list=byId('metaList');
+ list.innerHTML = found.length ? found.map(f=>metaRow(f.label,f.value,f.warn)).join('') : `<div class="metanone">${esc(t.meta_none)}</div>`;
+ byId('reportPanel').classList.remove('hidden');
+ byId('btnGo').disabled=false;
+ byId('status').textContent = found.length ? t.status_found.replace('{n}',found.length) : t.status_clean;
+}
+
+/* ---------- images: re-encode strips everything ---------- */
+function reencodeImage(file,type){
+ return new Promise((res,rej)=>{
+  const url=URL.createObjectURL(file); const img=new Image();
+  img.onload=()=>{ URL.revokeObjectURL(url); const c=document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext('2d').drawImage(img,0,0); c.toBlob(b=>{ b?res(b):rej(new Error('encode failed')); }, type, 0.95); };
+  img.onerror=()=>{ URL.revokeObjectURL(url); rej(new Error('image load failed')); }; img.src=url;
+ });
+}
+async function analyzeImage(file,ext){
+ const lab=L(); const t=T(); const found=[]; const present=t.meta_present;
+ const buf=new Uint8Array(await file.arrayBuffer());
+ if(ext==='jpg'||ext==='jpeg'){
+  let i=2;
+  while(i<buf.length-3){
+   if(buf[i]!==0xFF){ i++; continue; }
+   const marker=buf[i+1];
+   if(marker===0xD8||marker===0x01||(marker>=0xD0&&marker<=0xD7)){ i+=2; continue; }
+   if(marker===0xD9||marker===0xDA) break;
+   const len=(buf[i+2]<<8)|buf[i+3]; if(len<2) break;
+   const seg=buf.subarray(i+4,i+2+len);
+   const head=n=>{ let s=''; for(let k=0;k<Math.min(n,seg.length);k++) s+=String.fromCharCode(seg[k]); return s; };
+   if(marker===0xE1){ const h=head(5);
+     if(h==='Exif\0'||h.slice(0,4)==='Exif'){ found.push({label:lab.exif,value:present});
+       for(let k=0;k<seg.length-1;k++){ if(seg[k]===0x88&&seg[k+1]===0x25){ found.push({label:lab.gps,value:present,warn:true}); break; } } }
+     else if(head(4)==='http'){ found.push({label:lab.xmp,value:present}); } }
+   else if(marker===0xED){ found.push({label:lab.iptc,value:present}); }
+   else if(marker===0xE2){ if(head(4)==='ICC_') found.push({label:lab.icc,value:present}); }
+   else if(marker===0xFE){ found.push({label:lab.imgcomment,value:present}); }
+   i+=2+len;
+  }
+ } else if(ext==='png'){
+  let i=8;
+  while(i+12<=buf.length){
+   const len=((buf[i]<<24)|(buf[i+1]<<16)|(buf[i+2]<<8)|buf[i+3])>>>0;
+   const type=String.fromCharCode(buf[i+4],buf[i+5],buf[i+6],buf[i+7]);
+   if(type==='tEXt'||type==='iTXt'||type==='zTXt') found.push({label:lab.pngtext,value:type});
+   else if(type==='eXIf') found.push({label:lab.exif,value:present});
+   else if(type==='tIME') found.push({label:lab.pngtime,value:present});
+   if(type==='IEND') break;
+   i+=12+len;
+  }
+ }
+ const targetExt=(ext==='png')?'png':(ext==='webp')?'webp':(ext==='jpg'||ext==='jpeg')?'jpg':'png';
+ const targetType=targetExt==='png'?'image/png':targetExt==='webp'?'image/webp':'image/jpeg';
+ CUR={kind:'image',out:cleanName(file.name,targetExt),run:()=>reencodeImage(file,targetType)};
+ return found;
+}
+
+/* ---------- PDF: clear document info ---------- */
+async function analyzePdf(file){
+ const lab=L(); const found=[];
+ await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js');
+ const bytes=await file.arrayBuffer();
+ const doc=await PDFLib.PDFDocument.load(bytes);
+ const tryStr=(fn,label)=>{ try{ const v=doc[fn](); if(v) found.push({label,value:String(v)}); }catch(e){} };
+ tryStr('getTitle',lab.title); tryStr('getAuthor',lab.author); tryStr('getSubject',lab.subject); tryStr('getCreator',lab.creator); tryStr('getProducer',lab.producer);
+ try{ const kw=doc.getKeywords(); if(kw) found.push({label:lab.keywords,value:String(kw)}); }catch(e){}
+ try{ const d=doc.getCreationDate(); if(d) found.push({label:lab.created,value:d.toISOString().slice(0,10)}); }catch(e){}
+ try{ const d=doc.getModificationDate(); if(d) found.push({label:lab.modified,value:d.toISOString().slice(0,10)}); }catch(e){}
+ CUR={kind:'pdf',out:cleanName(file.name,'pdf'),run:async()=>{
+   const d=await PDFLib.PDFDocument.load(bytes);
+   try{ d.setTitle(''); d.setAuthor(''); d.setSubject(''); d.setKeywords([]); d.setProducer(''); d.setCreator(''); }catch(e){}
+   const out=await d.save({updateMetadata:false});
+   return new Blob([out],{type:'application/pdf'});
+ }};
+ return found;
+}
+
+/* ---------- Office (OOXML zip): clear docProps, flag comments/revisions ---------- */
+async function analyzeOffice(file,ext){
+ const lab=L(); const t=T(); const found=[];
+ const zip=await JSZip.loadAsync(await file.arrayBuffer());
+ const read=async p=>{ const f=zip.file(p); return f? await f.async('string') : ''; };
+ const tag=(xml,name)=>{ const m=new RegExp('<'+name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[^>]*>([\\s\\S]*?)<\\/'+name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'>').exec(xml); return m?m[1].trim():''; };
+ const coreXml=await read('docProps/core.xml');
+ const appXml=await read('docProps/app.xml');
+ const coreFields=[['dc:creator',lab.author],['cp:lastModifiedBy',lab.lastBy],['dc:title',lab.title],['dc:subject',lab.subject],['dc:description',lab.descr],['cp:keywords',lab.keywords],['cp:revision',lab.revision],['dcterms:created',lab.created],['dcterms:modified',lab.modified]];
+ coreFields.forEach(([tg,label])=>{ const v=tag(coreXml,tg); if(v) found.push({label,value:(/created|modified/.test(tg))?v.slice(0,10):v}); });
+ const appFields=[['Company',lab.company],['Manager',lab.manager],['Template',lab.template],['Application',lab.app]];
+ appFields.forEach(([tg,label])=>{ const v=tag(appXml,tg); if(v) found.push({label,value:v}); });
+ const names=Object.keys(zip.files);
+ if(names.some(n=>/comments\d*\.xml$/i.test(n))) found.push({label:lab.comments,value:t.meta_present,warn:true});
+ const dx=await read('word/document.xml');
+ if(dx && /<w:ins[\s>]|<w:del[\s>]/.test(dx)) found.push({label:lab.track,value:t.meta_present,warn:true});
+ const mime=ext==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':ext==='xlsx'?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+ CUR={kind:'office',out:cleanName(file.name,ext),run:async()=>{
+   if(coreXml){ let cx=coreXml; coreFields.forEach(([tg])=>{ cx=cx.replace(new RegExp('(<'+tg.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[^>]*>)([\\s\\S]*?)(<\\/'+tg.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'>)'),'$1$3'); }); zip.file('docProps/core.xml',cx); }
+   if(appXml){ let ax=appXml; appFields.forEach(([tg])=>{ ax=ax.replace(new RegExp('(<'+tg+'[^>]*>)([\\s\\S]*?)(<\\/'+tg+'>)'),'$1$3'); }); zip.file('docProps/app.xml',ax); }
+   return await zip.generateAsync({type:'blob',mimeType:mime});
+ }};
+ return found;
+}
+
+/* ---------- flow ---------- */
+async function onFile(file){
+ if(!file) return; const t=T(); const ext=extOf(file.name);
+ byId('fileWrap').innerHTML=`<div class="filebadge"><span>📄 ${esc(file.name)}</span><span class="x" id="clrFile">×</span></div>`;
+ byId('clrFile').onclick=clearFile;
+ const known = IMG_EXT.includes(ext) || ext==='pdf' || OFFICE_EXT.includes(ext);
+ if(!known){ byId('reportPanel').classList.add('hidden'); byId('status').textContent=t.status_unsupported; CUR=null; return; }
+ byId('reportPanel').classList.remove('hidden'); byId('metaList').innerHTML=''; byId('btnGo').disabled=true; byId('status').textContent=t.status_scanning;
+ try{
+  let found;
+  if(IMG_EXT.includes(ext)) found=await analyzeImage(file,ext);
+  else if(ext==='pdf') found=await analyzePdf(file);
+  else found=await analyzeOffice(file,ext);
+  showReport(found);
+ }catch(e){ byId('status').textContent='Error: '+e.message; }
+}
+function clearFile(){ CUR=null; byId('fileWrap').innerHTML=''; byId('fileIn').value=''; byId('reportPanel').classList.add('hidden'); byId('metaList').innerHTML=''; byId('status').textContent=''; }
+
+byId('fileIn').addEventListener('change',e=>onFile(e.target.files[0]));
+const drop=byId('drop');
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{ e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{ e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop',e=>{ if(e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]); });
+
+byId('btnGo').onclick=async()=>{
+ if(!CUR) return; const t=T(); byId('btnGo').disabled=true; byId('status').textContent=t.status_working;
+ try{ const blob=await CUR.run(); dl(CUR.out,blob); byId('status').textContent=t.status_done; }
+ catch(e){ byId('status').textContent='Error: '+e.message; }
+ byId('btnGo').disabled=false;
+};
+
+/* ---------- init ---------- */
+setTheme('dark'); setLang('en');
+</script>
+</body>
+</html>
