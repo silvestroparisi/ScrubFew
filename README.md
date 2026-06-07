@@ -2,7 +2,7 @@
 
 **Strip hidden metadata from your files — runs entirely in your browser, open source, for everyone.**
 
-ScrubFew is part of the **Few** toolkit, alongside [FirstFew](https://github.com/silvestroparisi/FirstFew), [FixFew](https://github.com/silvestroparisi/FixFew), [MaskFew](https://github.com/silvestroparisi/MaskFew) and [AskFew](https://github.com/silvestroparisi/AskFew).
+ScrubFew is part of the **Few** toolkit, alongside the rest of the suite (see the full list below).
 It removes the metadata baked into your files — EXIF/GPS in photos, author and edit history in Office documents, producer info in PDFs — **locally**, so what you can't see doesn't travel with the file when you share it.
 
 It pairs naturally with MaskFew: **MaskFew cleans the visible content, ScrubFew cleans the hidden metadata.** Together they make a file safe to share.
@@ -45,10 +45,13 @@ There's no backend. The whole tool is a single static page: no account, no uploa
 ## The Few toolkit
 
 - [**FirstFew**](https://silvestroparisi.github.io/FirstFew/) — prioritize the few that matter
-- [**FixFew**](https://silvestroparisi.github.io/FixFew/) — verify and remediate
+- [**FixFew**](https://silvestroparisi.github.io/FixFew/) — verify and remediate vulnerabilities
 - [**MaskFew**](https://silvestroparisi.github.io/MaskFew/) — anonymize a file before you share it
-- **ScrubFew** — strip hidden metadata before you share
 - [**AskFew**](https://silvestroparisi.github.io/AskFew/) — a private AI that runs in your browser
+- **ScrubFew** — strip hidden metadata before you share
+- [**RopaFew**](https://silvestroparisi.github.io/RopaFew/) — build your GDPR Article 30 register
+- [**GapFew**](https://silvestroparisi.github.io/GapFew/) — a multi-framework compliance gap self-assessment
+- [**CloseFew**](https://silvestroparisi.github.io/CloseFew/) — turn your gaps into a remediation plan
 
 ## License
 
